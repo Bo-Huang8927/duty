@@ -1,10 +1,1068 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <title>我的 GitHub 网页</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>今日值班查询</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入SheetJS用于Excel处理 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#07C160', // 微信绿色
+                        secondary: '#1AAD19',
+                        neutral: '#F5F5F5',
+                        text: {
+                            primary: '#333333',
+                            secondary: '#666666',
+                            tertiary: '#999999'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .wechat-btn {
+                @apply bg-primary text-white py-3 px-6 rounded-lg font-medium transition-all duration-200 shadow-md;
+            }
+            .wechat-btn:active {
+                @apply bg-secondary transform scale-95;
+            }
+            .result-card {
+                @apply bg-white rounded-lg shadow-sm p-5 mb-4 fade-in;
+            }
+            .fade-in {
+                animation: fadeIn 0.3s ease-out;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .admin-input {
+                @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50;
+            }
+            .tab-btn {
+                @apply py-2 px-4 text-text-secondary border-b-2 border-transparent transition-all duration-200;
+            }
+            .tab-btn.active {
+                @apply text-primary border-primary font-medium;
+            }
+        }
+    </style>
 </head>
-<body>
-    <h1>你好，GitHub Pages！</h1>
-    <p>这是我的第一个 GitHub 网页。</p>
+<body class="bg-neutral min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-md">
+        <!-- 标题区域 -->
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fa fa-calendar-check-o text-primary text-2xl"></i>
+            </div>
+            <h1 class="text-xl font-bold text-text-primary">今日值班查询</h1>
+            <p class="text-sm text-text-tertiary mt-1">一键查看今天谁值班</p>
+        </div>
+        
+        <!-- 当前日期 -->
+        <div class="result-card">
+            <div class="flex items-center">
+                <i class="fa fa-calendar text-primary mr-3"></i>
+                <span id="current-date" class="text-text-primary font-medium"></span>
+            </div>
+        </div>
+        
+        <!-- 查询按钮 -->
+        <div class="mb-4 text-center">
+            <button id="query-btn" class="wechat-btn w-full">
+                <i class="fa fa-search mr-2"></i>查询今日值班人员
+            </button>
+        </div>
+        
+        <!-- 管理入口按钮 -->
+        <div class="mb-6 text-center">
+            <button id="admin-btn" class="text-primary text-sm flex items-center justify-center mx-auto">
+                <i class="fa fa-cog mr-1"></i> 管理值班表
+            </button>
+        </div>
+        
+        <!-- 结果区域 -->
+        <div id="result-container" class="hidden">
+            <!-- 值班人员结果 -->
+            <div class="result-card" style="animation-delay: 0.1s">
+                <div class="flex items-start mb-4">
+                    <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mr-4 flex-shrink-0">
+                        <i class="fa fa-user text-primary"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-text-primary font-medium mb-1" id="duty-name">刘春树</h2>
+                        <p class="text-text-secondary text-sm" id="duty-period">6月23日 至 6月29日</p>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-xs text-text-tertiary">剩余值班</span>
+                    <span class="text-primary font-medium" id="remaining-days">5天</span>
+                </div>
+            </div>
+            
+            <!-- 提示信息 -->
+            <div class="text-center text-text-tertiary text-sm mt-2">
+                <p>数据最后更新于 <span id="last-updated">2025年6月28日</span></p>
+            </div>
+        </div>
+        
+        <!-- 初始提示 -->
+        <div id="initial-message" class="result-card text-center py-8">
+            <div class="w-12 h-12 bg-neutral rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fa fa-info-circle text-text-tertiary text-xl"></i>
+            </div>
+            <p class="text-text-tertiary">点击上方按钮查询今日值班人员</p>
+        </div>
+        
+        <!-- 管理密码输入框 -->
+        <div id="admin-password-container" class="hidden">
+            <div class="result-card">
+                <h3 class="font-medium text-text-primary mb-4">管理员登录</h3>
+                <div class="mb-3">
+                    <label class="text-xs text-text-tertiary block mb-1">请输入管理密码</label>
+                    <input type="password" id="admin-password" class="admin-input" placeholder="输入密码">
+                </div>
+                <div class="flex gap-2">
+                    <button id="admin-login-btn" class="wechat-btn flex-1">登录</button>
+                    <button id="admin-cancel-btn" class="bg-gray-200 text-text-secondary py-3 px-6 rounded-lg font-medium flex-1">取消</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 管理界面 -->
+        <div id="admin-panel" class="hidden">
+            <div class="result-card">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-medium text-text-primary">值班表管理</h3>
+                    <button id="logout-btn" class="text-red-500 text-sm">
+                        <i class="fa fa-sign-out mr-1"></i> 退出
+                    </button>
+                </div>
+                
+                <!-- 管理选项卡 -->
+                <div class="flex border-b mb-6">
+                    <button id="tab-manual" class="tab-btn active" data-tab="manual">手动添加</button>
+                    <button id="tab-import" class="tab-btn" data-tab="import">批量导入</button>
+                    <button id="tab-generate" class="tab-btn" data-tab="generate">自动生成</button>
+                    <button id="tab-export" class="tab-btn" data-tab="export">批量导出</button>
+                </div>
+                
+                <!-- 手动添加 -->
+                <div id="content-manual" class="tab-content">
+                    <h4 class="text-text-secondary font-medium mb-3 flex items-center">
+                        <i class="fa fa-plus-circle text-primary mr-2"></i> 添加新值班
+                    </h4>
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="text-xs text-text-tertiary block mb-1">姓名</label>
+                            <input type="text" id="new-name" class="admin-input" placeholder="输入姓名">
+                        </div>
+                        <div>
+                            <label class="text-xs text-text-tertiary block mb-1">开始日期</label>
+                            <input type="date" id="new-start" class="admin-input">
+                        </div>
+                        <div>
+                            <label class="text-xs text-text-tertiary block mb-1">结束日期</label>
+                            <input type="date" id="new-end" class="admin-input">
+                        </div>
+                    </div>
+                    <button id="add-duty-btn" class="wechat-btn w-full">
+                        <i class="fa fa-plus mr-2"></i> 添加
+                    </button>
+                </div>
+                
+                <!-- 批量导入 -->
+                <div id="content-import" class="tab-content hidden">
+                    <div class="mb-4">
+                        <h4 class="text-text-secondary font-medium mb-3 flex items-center">
+                            <i class="fa fa-upload text-primary mr-2"></i> 批量导入排班
+                        </h4>
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-5 text-center mb-4">
+                            <input type="file" id="import-file" accept=".xlsx,.xls,.csv" class="hidden">
+                            <button id="select-file-btn" class="wechat-btn mb-3">
+                                <i class="fa fa-file-excel-o mr-2"></i> 选择Excel文件
+                            </button>
+                            <p class="text-text-tertiary text-sm">支持格式：.xlsx, .xls, .csv</p>
+                            <p class="text-text-tertiary text-xs mt-1">文件应包含"姓名"、"开始日期"和"结束日期"三列</p>
+                        </div>
+                        <div id="import-preview-container" class="hidden mb-4">
+                            <h5 class="font-medium text-text-secondary mb-2">导入预览</h5>
+                            <div id="import-preview" class="bg-neutral rounded-lg p-3 max-h-60 overflow-y-auto text-sm"></div>
+                        </div>
+                        <button id="confirm-import-btn" class="wechat-btn w-full opacity-50 cursor-not-allowed" disabled>
+                            <i class="fa fa-check mr-2"></i> 确认导入
+                        </button>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                        <h5 class="font-medium text-blue-700 mb-1">导入说明</h5>
+                        <ul class="text-blue-600 list-disc pl-5 space-y-1">
+                            <li>Excel文件第一行为表头，需包含"姓名"、"开始日期"、"结束日期"三列</li>
+                            <li>日期格式建议为"YYYY-MM-DD"，如"2025-06-23"</li>
+                            <li>导入时会自动检查日期冲突</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 自动生成 -->
+                <div id="content-generate" class="tab-content hidden">
+                    <div class="mb-4">
+                        <h4 class="text-text-secondary font-medium mb-3 flex items-center">
+                            <i class="fa fa-cog text-primary mr-2"></i> 自动生成排班
+                        </h4>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="text-xs text-text-tertiary block mb-1">值班人员</label>
+                                <textarea id="generate-names" class="admin-input h-20" placeholder="请输入值班人员名单，每行一个人">刘春树
+吴昊
+王睿
+黄博
+杨小龙
+王昊
+任欢
+王晓</textarea>
+                            </div>
+                            <div>
+                                <label class="text-xs text-text-tertiary block mb-1">每人值班天数</label>
+                                <input type="number" id="generate-days" class="admin-input" value="7" min="1">
+                                
+                                <label class="text-xs text-text-tertiary block mb-1 mt-3">开始日期</label>
+                                <input type="date" id="generate-start" class="admin-input">
+                                
+                                <label class="text-xs text-text-tertiary block mb-1 mt-3">生成周期（天）</label>
+                                <input type="number" id="generate-period" class="admin-input" value="90" min="1">
+                            </div>
+                        </div>
+                        <button id="generate-btn" class="wechat-btn w-full">
+                            <i class="fa fa-magic mr-2"></i> 生成排班
+                        </button>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                        <h5 class="font-medium text-blue-700 mb-1">生成规则</h5>
+                        <ul class="text-blue-600 list-disc pl-5 space-y-1">
+                            <li>系统将按照输入顺序循环安排值班人员</li>
+                            <li>生成的排班将从开始日期起，按每人指定天数依次循环</li>
+                            <li>生成后可在下方列表中查看和调整</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 批量导出 -->
+                <div id="content-export" class="tab-content hidden">
+                    <div class="mb-4">
+                        <h4 class="text-text-secondary font-medium mb-3 flex items-center">
+                            <i class="fa fa-download text-primary mr-2"></i> 批量导出排班
+                        </h4>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="text-xs text-text-tertiary block mb-1">开始日期</label>
+                                <input type="date" id="export-start" class="admin-input">
+                            </div>
+                            <div>
+                                <label class="text-xs text-text-tertiary block mb-1">结束日期</label>
+                                <input type="date" id="export-end" class="admin-input">
+                            </div>
+                        </div>
+                        <button id="export-btn" class="wechat-btn w-full">
+                            <i class="fa fa-file-excel-o mr-2"></i> 导出Excel
+                        </button>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                        <h5 class="font-medium text-blue-700 mb-1">导出说明</h5>
+                        <ul class="text-blue-600 list-disc pl-5 space-y-1">
+                            <li>将导出指定日期范围内的所有值班安排</li>
+                            <li>如果不选择日期，将导出所有值班安排</li>
+                            <li>导出文件格式为Excel(.xlsx)</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 现有值班列表 -->
+                <div>
+                    <h4 class="text-text-secondary font-medium mb-3 flex items-center">
+                        <i class="fa fa-list-ul text-primary mr-2"></i> 现有值班表
+                    </h4>
+                    <div id="duty-list" class="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                        <!-- 值班表将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 编辑模态框 -->
+        <div id="edit-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg shadow-lg max-w-md w-full p-5 mx-4 fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-medium text-text-primary">编辑值班信息</h3>
+                    <button id="close-edit-modal" class="text-text-tertiary">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+                <input type="hidden" id="edit-index">
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                        <label class="text-xs text-text-tertiary block mb-1">姓名</label>
+                        <input type="text" id="edit-name" class="admin-input">
+                    </div>
+                    <div>
+                        <label class="text-xs text-text-tertiary block mb-1">开始日期</label>
+                        <input type="date" id="edit-start" class="admin-input">
+                    </div>
+                    <div>
+                        <label class="text-xs text-text-tertiary block mb-1">结束日期</label>
+                        <input type="date" id="edit-end" class="admin-input">
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="save-edit-btn" class="wechat-btn flex-1">保存</button>
+                    <button id="delete-duty-btn" class="bg-red-500 text-white py-3 px-6 rounded-lg font-medium flex-1">
+                        <i class="fa fa-trash mr-1"></i> 删除
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 操作结果提示 -->
+        <div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-primary text-white px-4 py-2 rounded-lg shadow-lg z-50 hidden fade-in">
+            <p id="toast-message"></p>
+        </div>
+    </div>
+
+    <script>
+        // 默认值班表数据
+        let dutySchedule = [
+            { name: "刘春树", startDate: "2025-06-23", endDate: "2025-06-29" },
+            { name: "吴昊", startDate: "2025-06-30", endDate: "2025-07-06" },
+            { name: "王睿", startDate: "2025-07-07", endDate: "2025-07-13" },
+            { name: "黄博", startDate: "2025-07-14", endDate: "2025-07-20" },
+            { name: "杨小龙", startDate: "2025-07-21", endDate: "2025-07-27" },
+            { name: "王昊", startDate: "2025-07-28", endDate: "2025-08-03" },
+            { name: "任欢", startDate: "2025-08-04", endDate: "2025-08-10" },
+            { name: "刘春树", startDate: "2025-08-11", endDate: "2025-08-17" },
+            { name: "吴昊", startDate: "2025-08-18", endDate: "2025-08-24" },
+            { name: "王睿", startDate: "2025-08-25", endDate: "2025-08-31" },
+            { name: "王晓", startDate: "2025-09-01", endDate: "2025-09-07" },
+            { name: "黄博", startDate: "2025-09-08", endDate: "2025-09-14" },
+            { name: "杨小龙", startDate: "2025-09-15", endDate: "2025-09-21" },
+            { name: "王昊", startDate: "2025-09-22", endDate: "2025-09-28" },
+            { name: "任欢", startDate: "2025-09-29", endDate: "2025-10-05" },
+            { name: "刘春树", startDate: "2025-10-06", endDate: "2025-10-12" },
+            { name: "吴昊", startDate: "2025-10-13", endDate: "2025-10-19" },
+            { name: "王睿", startDate: "2025-10-20", endDate: "2025-10-26" },
+            { name: "王晓", startDate: "2025-10-27", endDate: "2025-11-02" },
+            { name: "杨小龙", startDate: "2025-11-03", endDate: "2025-11-09" },
+            { name: "王昊", startDate: "2025-11-10", endDate: "2025-11-16" },
+            { name: "任欢", startDate: "2025-11-17", endDate: "2025-11-23" },
+            { name: "刘春树", startDate: "2025-11-24", endDate: "2025-11-30" },
+            { name: "吴昊", startDate: "2025-12-01", endDate: "2025-12-07" },
+            { name: "王睿", startDate: "2025-12-08", endDate: "2025-12-14" },
+            { name: "王晓", startDate: "2025-12-15", endDate: "2025-12-21" },
+            { name: "黄博", startDate: "2025-12-22", endDate: "2025-12-28" },
+            { name: "王昊", startDate: "2025-12-29", endDate: "2026-01-04" },
+            { name: "任欢", startDate: "2026-01-05", endDate: "2026-01-11" },
+            { name: "刘春树", startDate: "2026-01-12", endDate: "2026-01-18" },
+            { name: "吴昊", startDate: "2026-01-19", endDate: "2026-01-25" },
+            { name: "王睿", startDate: "2026-01-26", endDate: "2026-02-01" },
+            { name: "杨小龙", startDate: "2026-02-02", endDate: "2026-02-08" },
+            { name: "黄博", startDate: "2026-02-09", endDate: "2026-02-15" }
+        ];
+        
+        // 管理密码（实际使用中建议更复杂）
+        const ADMIN_PASSWORD = "123456";
+        
+        // 导入数据缓存
+        let importData = [];
+        
+        // 从本地存储加载数据
+        function loadData() {
+            const savedSchedule = localStorage.getItem('dutySchedule');
+            const lastUpdated = localStorage.getItem('lastUpdated');
+            
+            if (savedSchedule) {
+                dutySchedule = JSON.parse(savedSchedule);
+            }
+            
+            if (lastUpdated) {
+                document.getElementById('last-updated').textContent = new Date(lastUpdated).toLocaleDateString('zh-CN', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+        }
+        
+        // 保存数据到本地存储
+        function saveData() {
+            localStorage.setItem('dutySchedule', JSON.stringify(dutySchedule));
+            const now = new Date();
+            localStorage.setItem('lastUpdated', now.toISOString());
+            document.getElementById('last-updated').textContent = now.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            showToast('数据已保存');
+        }
+        
+        // 格式化日期显示
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            const weekday = weekdays[date.getDay()];
+            return `${year}年${month}月${day}日 ${weekday}`;
+        }
+
+        // 格式化日期为 "MM月DD日"
+        function formatMonthDay(dateString) {
+            const date = new Date(dateString);
+            return `${date.getMonth() + 1}月${date.getDate()}日`;
+        }
+
+        // 查找指定日期的值班人员
+        function findDutyPerson(schedule, date) {
+            const targetDate = new Date(date);
+            for (const duty of schedule) {
+                const startDate = new Date(duty.startDate);
+                const endDate = new Date(duty.endDate);
+                
+                if (targetDate >= startDate && targetDate <= endDate) {
+                    // 计算剩余天数
+                    const remainingDays = Math.ceil((endDate - targetDate) / (1000 * 60 * 60 * 24));
+                    return { ...duty, remainingDays };
+                }
+            }
+            return null;
+        }
+        
+        // 显示提示消息
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            
+            toastMessage.textContent = message;
+            toast.classList.remove('hidden');
+            
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // 渲染值班表列表
+        function renderDutyList() {
+            const dutyListElement = document.getElementById('duty-list');
+            dutyListElement.innerHTML = '';
+            
+            if (dutySchedule.length === 0) {
+                dutyListElement.innerHTML = '<p class="text-text-tertiary text-center py-3">暂无值班安排</p>';
+                return;
+            }
+            
+            // 按开始日期排序
+            dutySchedule.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+            
+            dutySchedule.forEach((duty, index) => {
+                const item = document.createElement('div');
+                item.className = 'bg-neutral rounded-lg p-3 flex justify-between items-center';
+                
+                // 检查当前日期是否在值班周期内
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const isCurrent = today >= new Date(duty.startDate) && today <= new Date(duty.endDate);
+                
+                item.innerHTML = `
+                    <div class="flex-1 mr-3">
+                        <div class="font-medium ${isCurrent ? 'text-primary' : 'text-text-primary'}">${duty.name}</div>
+                        <div class="text-xs text-text-tertiary">${formatMonthDay(duty.startDate)} - ${formatMonthDay(duty.endDate)}</div>
+                    </div>
+                    <button class="edit-btn text-primary text-sm" data-index="${index}">
+                        <i class="fa fa-pencil"></i> 编辑
+                    </button>
+                `;
+                
+                dutyListElement.appendChild(item);
+            });
+            
+            // 添加编辑按钮事件
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.getAttribute('data-index'));
+                    const duty = dutySchedule[index];
+                    
+                    document.getElementById('edit-index').value = index;
+                    document.getElementById('edit-name').value = duty.name;
+                    document.getElementById('edit-start').value = duty.startDate;
+                    document.getElementById('edit-end').value = duty.endDate;
+                    
+                    document.getElementById('edit-modal').classList.remove('hidden');
+                });
+            });
+        }
+        
+        // 切换管理选项卡
+        function switchTab(tabName) {
+            // 切换按钮状态
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('data-tab') === tabName) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // 切换内容显示
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+        }
+        
+        // 解析Excel文件
+        function parseExcelFile(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // 获取第一个工作表
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // 转换为JSON
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    if (jsonData.length === 0) {
+                        showToast('Excel文件中没有数据');
+                        return;
+                    }
+                    
+                    // 验证数据格式
+                    const requiredFields = ['姓名', '开始日期', '结束日期'];
+                    const firstRow = jsonData[0];
+                    
+                    for (const field of requiredFields) {
+                        if (!Object.keys(firstRow).includes(field)) {
+                            showToast(`Excel文件缺少必要的列: ${field}`);
+                            return;
+                        }
+                    }
+                    
+                    // 处理日期格式并验证
+                    importData = [];
+                    let hasError = false;
+                    
+                    jsonData.forEach((row, index) => {
+                        try {
+                            const name = row['姓名'].toString().trim();
+                            if (!name) throw new Error('姓名不能为空');
+                            
+                            // 尝试解析日期
+                            let startDate = row['开始日期'];
+                            let endDate = row['结束日期'];
+                            
+                            // 处理不同的日期格式
+                            if (typeof startDate === 'string') {
+                                // 尝试解析字符串格式
+                                startDate = new Date(startDate);
+                                if (isNaN(startDate.getTime())) {
+                                    // 尝试其他格式
+                                    const parts = startDate.split(/[\/\-\.]/);
+                                    if (parts.length === 3) {
+                                        startDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                                    } else {
+                                        throw new Error('无法解析开始日期');
+                                    }
+                                }
+                            } else if (typeof startDate === 'number') {
+                                // Excel日期格式（自1900年1月1日以来的天数）
+                                startDate = new Date((startDate - 25569) * 86400 * 1000);
+                            } else {
+                                throw new Error('开始日期格式不正确');
+                            }
+                            
+                            if (typeof endDate === 'string') {
+                                endDate = new Date(endDate);
+                                if (isNaN(endDate.getTime())) {
+                                    const parts = endDate.split(/[\/\-\.]/);
+                                    if (parts.length === 3) {
+                                        endDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                                    } else {
+                                        throw new Error('无法解析结束日期');
+                                    }
+                                }
+                            } else if (typeof endDate === 'number') {
+                                endDate = new Date((endDate - 25569) * 86400 * 1000);
+                            } else {
+                                throw new Error('结束日期格式不正确');
+                            }
+                            
+                            // 格式化日期为YYYY-MM-DD
+                            const formatDate = (date) => {
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                return `${year}-${month}-${day}`;
+                            };
+                            
+                            const formattedStartDate = formatDate(startDate);
+                            const formattedEndDate = formatDate(endDate);
+                            
+                            // 检查结束日期是否早于开始日期
+                            if (new Date(formattedEndDate) < new Date(formattedStartDate)) {
+                                throw new Error('结束日期不能早于开始日期');
+                            }
+                            
+                            importData.push({
+                                name,
+                                startDate: formattedStartDate,
+                                endDate: formattedEndDate
+                            });
+                        } catch (error) {
+                            hasError = true;
+                            showToast(`第 ${index + 2} 行解析错误: ${error.message}`);
+                        }
+                    });
+                    
+                    if (hasError) return;
+                    
+                    // 显示预览
+                    const previewContainer = document.getElementById('import-preview');
+                    previewContainer.innerHTML = '';
+                    
+                    if (importData.length > 0) {
+                        const table = document.createElement('table');
+                        table.className = 'w-full';
+                        table.innerHTML = `
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="text-left py-1 text-xs font-medium">序号</th>
+                                    <th class="text-left py-1 text-xs font-medium">姓名</th>
+                                    <th class="text-left py-1 text-xs font-medium">开始日期</th>
+                                    <th class="text-left py-1 text-xs font-medium">结束日期</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${importData.map((duty, i) => `
+                                    <tr class="border-b">
+                                        <td class="py-1 text-xs">${i + 1}</td>
+                                        <td class="py-1 text-xs">${duty.name}</td>
+                                        <td class="py-1 text-xs">${formatMonthDay(duty.startDate)}</td>
+                                        <td class="py-1 text-xs">${formatMonthDay(duty.endDate)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        `;
+                        previewContainer.appendChild(table);
+                        
+                        // 显示预览容器并启用导入按钮
+                        document.getElementById('import-preview-container').classList.remove('hidden');
+                        document.getElementById('confirm-import-btn').classList.remove('opacity-50', 'cursor-not-allowed');
+                        document.getElementById('confirm-import-btn').disabled = false;
+                        
+                        showToast(`已成功解析 ${importData.length} 条值班数据`);
+                    } else {
+                        showToast('没有找到有效的值班数据');
+                    }
+                } catch (error) {
+                    showToast('解析文件时出错: ' + error.message);
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // 导出Excel文件
+        function exportToExcel() {
+            const startDateStr = document.getElementById('export-start').value;
+            const endDateStr = document.getElementById('export-end').value;
+            
+            let filteredSchedule = [...dutySchedule];
+            
+            // 按日期过滤
+            if (startDateStr && endDateStr) {
+                const startDate = new Date(startDateStr);
+                const endDate = new Date(endDateStr);
+                
+                filteredSchedule = dutySchedule.filter(duty => {
+                    const dutyStart = new Date(duty.startDate);
+                    const dutyEnd = new Date(duty.endDate);
+                    
+                    // 检查是否有重叠
+                    return !(dutyEnd < startDate || dutyStart > endDate);
+                });
+            }
+            
+            if (filteredSchedule.length === 0) {
+                showToast('没有符合条件的值班数据');
+                return;
+            }
+            
+            // 创建工作表数据
+            const ws_data = [['姓名', '开始日期', '结束日期']];
+            
+            filteredSchedule.forEach(duty => {
+                ws_data.push([
+                    duty.name,
+                    formatDateForExcel(duty.startDate),
+                    formatDateForExcel(duty.endDate)
+                ]);
+            });
+            
+            // 创建工作簿
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            
+            // 添加工作表到工作簿
+            XLSX.utils.book_append_sheet(wb, ws, "值班表");
+            
+            // 生成Excel文件并下载
+            XLSX.writeFile(wb, "值班表.xlsx");
+            
+            showToast(`成功导出 ${filteredSchedule.length} 条值班数据`);
+        }
+        
+        // 辅助函数：将日期格式化为Excel友好格式
+        function formatDateForExcel(dateString) {
+            const date = new Date(dateString);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 设置当前日期显示
+            const currentDateElement = document.getElementById('current-date');
+            const today = new Date();
+            currentDateElement.textContent = formatDate(today);
+            
+            // 加载本地存储数据
+            loadData();
+            
+            // 查询按钮点击事件
+            document.getElementById('query-btn').addEventListener('click', function() {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const dutyPerson = findDutyPerson(dutySchedule, today);
+                
+                if (dutyPerson) {
+                    document.getElementById('duty-name').textContent = dutyPerson.name;
+                    document.getElementById('duty-period').textContent = `${formatMonthDay(dutyPerson.startDate)} 至 ${formatMonthDay(dutyPerson.endDate)}`;
+                    document.getElementById('remaining-days').textContent = `${dutyPerson.remainingDays}天`;
+                    
+                    // 显示结果，隐藏初始提示
+                    document.getElementById('result-container').classList.remove('hidden');
+                    document.getElementById('initial-message').classList.add('hidden');
+                    
+                    showToast('查询成功');
+                } else {
+                    showToast('今日没有找到值班人员安排');
+                }
+            });
+            
+            // 管理员按钮点击事件
+            document.getElementById('admin-btn').addEventListener('click', function() {
+                document.getElementById('admin-password-container').classList.remove('hidden');
+            });
+            
+            // 管理员取消按钮点击事件
+            document.getElementById('admin-cancel-btn').addEventListener('click', function() {
+                document.getElementById('admin-password-container').classList.add('hidden');
+            });
+            
+            // 管理员登录按钮点击事件
+            document.getElementById('admin-login-btn').addEventListener('click', function() {
+                const password = document.getElementById('admin-password').value;
+                if (password === ADMIN_PASSWORD) {
+                    document.getElementById('admin-password-container').classList.add('hidden');
+                    document.getElementById('admin-panel').classList.remove('hidden');
+                    renderDutyList();
+                    showToast('登录成功');
+                } else {
+                    showToast('密码错误');
+                }
+            });
+            
+            // 退出管理员按钮点击事件
+            document.getElementById('logout-btn').addEventListener('click', function() {
+                document.getElementById('admin-panel').classList.add('hidden');
+                showToast('已退出管理模式');
+            });
+            
+            // 管理选项卡切换事件
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tabName = this.getAttribute('data-tab');
+                    switchTab(tabName);
+                });
+            });
+            
+            // 添加新值班按钮点击事件
+            document.getElementById('add-duty-btn').addEventListener('click', function() {
+                const name = document.getElementById('new-name').value.trim();
+                const startDate = document.getElementById('new-start').value;
+                const endDate = document.getElementById('new-end').value;
+                
+                if (!name) {
+                    showToast('请输入姓名');
+                    return;
+                }
+                
+                if (!startDate || !endDate) {
+                    showToast('请选择开始和结束日期');
+                    return;
+                }
+                
+                if (new Date(endDate) < new Date(startDate)) {
+                    showToast('结束日期不能早于开始日期');
+                    return;
+                }
+                
+                // 检查日期冲突
+                const hasConflict = dutySchedule.some(duty => {
+                    const existingStart = new Date(duty.startDate);
+                    const existingEnd = new Date(duty.endDate);
+                    const newStart = new Date(startDate);
+                    const newEnd = new Date(endDate);
+                    
+                    // 检查是否有重叠
+                    return !(newEnd < existingStart || newStart > existingEnd);
+                });
+                
+                if (hasConflict) {
+                    showToast('新的值班安排与现有安排冲突');
+                    return;
+                }
+                
+                // 添加新值班
+                dutySchedule.push({ name, startDate, endDate });
+                saveData();
+                renderDutyList();
+                
+                // 清空输入
+                document.getElementById('new-name').value = '';
+                document.getElementById('new-start').value = '';
+                document.getElementById('new-end').value = '';
+                
+                showToast('添加成功');
+            });
+            
+            // 关闭编辑模态框按钮点击事件
+            document.getElementById('close-edit-modal').addEventListener('click', function() {
+                document.getElementById('edit-modal').classList.add('hidden');
+            });
+            
+            // 保存编辑按钮点击事件
+            document.getElementById('save-edit-btn').addEventListener('click', function() {
+                const index = parseInt(document.getElementById('edit-index').value);
+                const name = document.getElementById('edit-name').value.trim();
+                const startDate = document.getElementById('edit-start').value;
+                const endDate = document.getElementById('edit-end').value;
+                
+                if (!name) {
+                    showToast('请输入姓名');
+                    return;
+                }
+                
+                if (!startDate || !endDate) {
+                    showToast('请选择开始和结束日期');
+                    return;
+                }
+                
+                if (new Date(endDate) < new Date(startDate)) {
+                    showToast('结束日期不能早于开始日期');
+                    return;
+                }
+                
+                // 检查日期冲突（排除当前编辑的记录）
+                const hasConflict = dutySchedule.some((duty, i) => {
+                    if (i === index) return false; // 排除当前编辑的记录
+                    
+                    const existingStart = new Date(duty.startDate);
+                    const existingEnd = new Date(duty.endDate);
+                    const newStart = new Date(startDate);
+                    const newEnd = new Date(endDate);
+                    
+                    // 检查是否有重叠
+                    return !(newEnd < existingStart || newStart > existingEnd);
+                });
+                
+                if (hasConflict) {
+                    showToast('修改后的值班安排与现有安排冲突');
+                    return;
+                }
+                
+                // 更新值班信息
+                dutySchedule[index] = { name, startDate, endDate };
+                saveData();
+                renderDutyList();
+                document.getElementById('edit-modal').classList.add('hidden');
+                
+                showToast('修改成功');
+            });
+            
+            // 删除值班按钮点击事件
+            document.getElementById('delete-duty-btn').addEventListener('click', function() {
+                if (confirm('确定要删除此值班安排吗？')) {
+                    const index = parseInt(document.getElementById('edit-index').value);
+                    dutySchedule.splice(index, 1);
+                    saveData();
+                    renderDutyList();
+                    document.getElementById('edit-modal').classList.add('hidden');
+                    
+                    showToast('已删除');
+                }
+            });
+            
+            // 选择文件按钮点击事件
+            document.getElementById('select-file-btn').addEventListener('click', function() {
+                document.getElementById('import-file').click();
+            });
+            
+            // 文件选择改变事件
+            document.getElementById('import-file').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // 检查文件类型
+                const fileExtension = file.name.split('.').pop().toLowerCase();
+                if (!['xlsx', 'xls', 'csv'].includes(fileExtension)) {
+                    showToast('请选择有效的Excel或CSV文件');
+                    return;
+                }
+                
+                parseExcelFile(file);
+            });
+            
+            // 确认导入按钮点击事件
+            document.getElementById('confirm-import-btn').addEventListener('click', function() {
+                if (importData.length === 0) {
+                    showToast('没有可导入的数据');
+                    return;
+                }
+                
+                // 合并导入数据
+                dutySchedule = [...dutySchedule, ...importData];
+                saveData();
+                renderDutyList();
+                
+                // 重置导入状态
+                importData = [];
+                document.getElementById('import-preview-container').classList.add('hidden');
+                document.getElementById('confirm-import-btn').classList.add('opacity-50', 'cursor-not-allowed');
+                document.getElementById('confirm-import-btn').disabled = true;
+                
+                showToast(`成功导入 ${importData.length} 条值班安排`);
+            });
+            
+            // 自动生成排班按钮点击事件
+            document.getElementById('generate-btn').addEventListener('click', function() {
+                const namesText = document.getElementById('generate-names').value.trim();
+                const daysPerPerson = parseInt(document.getElementById('generate-days').value) || 7;
+                const startDate = document.getElementById('generate-start').value;
+                const period = parseInt(document.getElementById('generate-period').value) || 90;
+                
+                if (!namesText) {
+                    showToast('请输入值班人员名单');
+                    return;
+                }
+                
+                if (!startDate) {
+                    showToast('请选择开始日期');
+                    return;
+                }
+                
+                if (daysPerPerson <= 0) {
+                    showToast('每人值班天数必须大于0');
+                    return;
+                }
+                
+                if (period <= 0) {
+                    showToast('生成周期必须大于0');
+                    return;
+                }
+                
+                const names = namesText.split('\n').filter(name => name.trim() !== '');
+                
+                if (names.length === 0) {
+                    showToast('没有有效的值班人员');
+                    return;
+                }
+                
+                // 生成排班
+                const generatedDuties = [];
+                let currentDate = new Date(startDate);
+                const endDate = new Date(currentDate);
+                endDate.setDate(endDate.getDate() + period - 1);
+                
+                let personIndex = 0;
+                
+                while (currentDate <= endDate) {
+                    const dutyStart = new Date(currentDate);
+                    const dutyEnd = new Date(currentDate);
+                    dutyEnd.setDate(dutyEnd.getDate() + daysPerPerson - 1);
+                    
+                    // 如果结束日期超过总周期，调整为周期结束
+                    if (dutyEnd > endDate) {
+                        dutyEnd.setTime(endDate.getTime());
+                    }
+                    
+                    generatedDuties.push({
+                        name: names[personIndex],
+                        startDate: formatDateString(dutyStart),
+                        endDate: formatDateString(dutyEnd)
+                    });
+                    
+                    // 移动到下一个日期
+                    currentDate.setDate(currentDate.getDate() + daysPerPerson);
+                    personIndex = (personIndex + 1) % names.length;
+                }
+                
+                // 添加生成的排班
+                dutySchedule = [...dutySchedule, ...generatedDuties];
+                saveData();
+                renderDutyList();
+                
+                showToast(`成功生成 ${generatedDuties.length} 条值班安排`);
+            });
+            
+            // 导出Excel按钮点击事件
+            document.getElementById('export-btn').addEventListener('click', exportToExcel);
+            
+            // 辅助函数：将日期格式化为YYYY-MM-DD
+            function formatDateString(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+            
+            // 设置默认的生成开始日期为明天
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('generate-start').value = formatDateString(tomorrow);
+            
+            // 设置默认的导出开始日期为今天
+            document.getElementById('export-start').value = formatDateString(today);
+        });
+    </script>
 </body>
 </html>
+    
